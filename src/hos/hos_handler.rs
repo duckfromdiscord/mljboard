@@ -1,29 +1,31 @@
-use crate::{
-    hos::{
-        hos_holder::get_hos_connections,
-        json::HOSIncomingReq,
-    },
-    maloja_backend::hos::HOSConnection,
-};
+use std::collections::HashMap;
+
+use crate::{hos::json::HOSIncomingReq, maloja_backend::hos::HOSConnection};
+use actix_web::web::Data;
 use actix_ws::{Message, MessageStream, Session};
 use futures_util::stream::StreamExt;
 use uuid::Uuid;
 
-pub async fn hos_ws(mut session: Session, mut msg_stream: MessageStream) {
+pub async fn hos_ws(
+    mut session: Session,
+    mut msg_stream: MessageStream,
+    data: Data<crate::hos::state::AppState>,
+) {
     
     // the pairing_code and the connection_id are not the same
-    // pairing_code is like a password, connection_id is used exclusively internally on serverside to identify connections
+    // pairing_code is like a password, connection_id is used exclusively internally serverside to identify connections
     let mut pairing_code: Option<String> = None;
     let connection_id: Uuid = Uuid::new_v4();
 
     log::info!("Connected to session ID {}", connection_id.to_string());
 
-    get_hos_connections().lock().await.insert(
+    data.hos_connections.lock().await.insert(
         connection_id,
         HOSConnection {
             incoming: vec![],
             session: session.clone(),
             pairing_code: pairing_code.clone(),
+            channels: HashMap::new(),
             connection_id,
         },
     );
@@ -54,13 +56,38 @@ pub async fn hos_ws(mut session: Session, mut msg_stream: MessageStream) {
                                             incoming.clone().id.unwrap_or("[no id]".to_string()),
                                             connection_id.to_string()
                                         );
-                                    get_hos_connections()
-                                        .lock()
-                                        .await
-                                        .get_mut(&connection_id)
+                                    let mut conn = data.hos_connections.lock().await;
+                                    conn.get_mut(&connection_id)
                                         .unwrap()
                                         .incoming
-                                        .push(incoming);
+                                        .push(incoming.clone());
+                                    match incoming.content {
+                                        Some(ref content) => {
+                                            if let Some(channel) = conn
+                                                .get_mut(&connection_id)
+                                                .unwrap()
+                                                .channels
+                                                .get_mut(&incoming.clone().id.unwrap())
+                                            {
+                                                log::warn!("Channel for request id {} found in session ID {}",
+                                                    incoming.clone().id.unwrap_or("[no id]".to_string()),
+                                                    connection_id.to_string()
+                                                );
+                                                channel.send(content.to_string()).unwrap();
+                                            } else {
+                                                log::warn!("Channel for request id {} not found in session ID {}",
+                                                    incoming.clone().id.unwrap_or("[no id]".to_string()),
+                                                    connection_id.to_string()
+                                                );
+                                            }
+                                        }
+                                        None => {
+                                            log::warn!(
+                                                "Content-less response in session ID {}",
+                                                connection_id.to_string()
+                                            );
+                                        }
+                                    }
                                 }
                                 _ => {}
                             }
@@ -99,7 +126,7 @@ pub async fn hos_ws(mut session: Session, mut msg_stream: MessageStream) {
     // attempt to close connection gracefully
     let _ = session.close(close_reason).await;
 
-    get_hos_connections().lock().await.remove(&connection_id);
+    data.hos_connections.lock().await.remove(&connection_id);
 
     log::info!("Disconnected from session ID {}", connection_id.to_string());
 }

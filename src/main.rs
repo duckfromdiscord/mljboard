@@ -1,23 +1,33 @@
-use actix_files::NamedFile;
+use actix_files::{NamedFile, Files};
 use actix_web::{
-    middleware, rt, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder,
+    middleware, rt, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder, web::Redirect
 };
 use clap::{Arg, Command};
 use mljboard::hos::hos_handler;
-use mljboard::hos::json::hos_request;
+use mljboard::maloja_backend::hos::HOSBackend;
+use mljboard::maloja_backend::traits::MalojaBackend;
 use tokio::sync::broadcast;
 use uuid::Uuid;
+use std::collections::HashMap;
 
-async fn index() -> impl Responder {
+use mljboard::hos::state::AppState;
+
+async fn root_redir() -> impl Responder {
+    Redirect::to("/site").permanent()
+}
+
+async fn test_fn(_data: web::Data<AppState>) -> impl Responder {
     NamedFile::open_async("./static/index.html").await.unwrap()
 }
 
-async fn hos_ws_route(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
+async fn hos_ws_route(req: HttpRequest, stream: web::Payload, data: web::Data<AppState>) -> Result<HttpResponse, Error> {
     let (res, session, msg_stream) = actix_ws::handle(&req, stream)?;
-    rt::spawn(hos_handler::hos_ws(session, msg_stream));
+    rt::spawn(hos_handler::hos_ws(session, msg_stream, data));
 
     Ok(res)
 }
+
+
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> std::io::Result<()> {
@@ -52,9 +62,16 @@ async fn main() -> std::io::Result<()> {
 
     let (tx, _) = broadcast::channel::<web::Bytes>(128);
 
+    let state = web::Data::new(AppState {
+        hos_connections: HashMap::new().into(),
+    });
+
     HttpServer::new(move || {
         App::new()
-            .service(web::resource("/").to(index))
+        .app_data(state.clone())
+            .service(web::resource("/").to(root_redir))
+            .service(Files::new("/site/", "./static/").index_file("index.html"))
+            .service(web::resource("/poll").to(test_fn))
             .service(web::resource("/ws").route(web::get().to(hos_ws_route)))
             .app_data(web::Data::new(tx.clone()))
             .wrap(middleware::Logger::default())
