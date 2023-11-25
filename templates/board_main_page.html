@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.6/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/theme-change@2.0.2/index.js"></script>
+    <meta charset="utf-8" />
+    <title>mljboard</title>
+  </head>
+  <body>
+    <div class="navbar bg-primary text-primary-content">
+      <a class="btn btn-ghost text-xl">mljboard</a>
+    </div>
+
+    <br>
+    <br>
+    <br>
+    <br>
+    <br>
+
+    <div class="overflow-x-auto" style="margin-left: 25%; margin-right: 25%">
+        <table class="table table-xs">
+            <thead>
+                <th>User</th>
+                <th>Scrobbles this year</th>
+            </thead>
+            <tbody>
+                {% for row in table %}
+                <tr>{% for col in row %}<td>{{ col }}</td>{% endfor %}</tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+  </body>
+</html>

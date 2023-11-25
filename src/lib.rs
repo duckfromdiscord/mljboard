@@ -1,2 +1,4 @@
-pub mod hos;
-pub mod maloja_backend;
+pub mod maloja_interf;
+pub mod leaderboard;
+pub mod state;
+pub mod hos_interf;
